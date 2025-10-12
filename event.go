@@ -30,7 +30,11 @@ func (p Poll) HandleOutgoing(app *App) error {
 	if err != nil {
 		return err
 	}
-	num, err = app.Last(num)
+	if num == 0 {
+		return nil
+	}
+
+	num, err = app.Skip(app.last)
 	if err != nil {
 		return err
 	}
@@ -48,7 +52,11 @@ func (p ManualPoll) HandleOutgoing(app *App) error {
 		return err
 	}
 	app.incoming <- ManualPoll(num)
-	num, err = app.Last(num)
+	if num == 0 {
+		return nil
+	}
+
+	num, err = app.Skip(app.last)
 	if err != nil {
 		return err
 	}

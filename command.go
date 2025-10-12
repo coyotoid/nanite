@@ -55,6 +55,38 @@ func (app *App) Poll(since int) (num int, err error) {
 	return num, nil
 }
 
+func (app *App) Skip(since int) (num int, err error) {
+	if _, err := fmt.Fprintf(app.conn, "SKIP %d\n", since); err != nil {
+		return 0, err
+	}
+
+	if !app.scanner.Scan() {
+		return 0, app.scanner.Err()
+	}
+	num, err = strconv.Atoi(app.scanner.Text())
+	if err != nil {
+		return 0, err
+	}
+
+	for range num {
+		if !app.scanner.Scan() {
+			return 0, err
+		}
+		app.incoming <- Message(app.scanner.Text())
+	}
+
+	if !app.scanner.Scan() {
+		return 0, app.scanner.Err()
+	}
+	last, err := strconv.Atoi(app.scanner.Text())
+	if err != nil {
+		return 0, err
+	}
+	app.incoming <- Last(last)
+
+	return num, nil
+}
+
 func (app *App) Last(n int) (num int, err error) {
 	if n == 0 {
 		return 0, nil
