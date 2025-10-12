@@ -29,4 +29,10 @@ commands:
 - `/me [is listening to music]`: IRC `/me` alike
 - `/poll [n]`: change polling interval, if no arguments, poll manually
 
+## won't support (yet)
+
+- sixel (tried, it seems to be complicated to get it to work with Vaxis' pager
+  widget)
+
 [Nanochat]: https://git.phial.org/d6/nanochat
+[Vaxis]: https://git.sr.ht/~rockorager/vaxis

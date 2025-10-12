@@ -43,7 +43,7 @@ func (app *App) Redraw() {
 	delimiterStyle := vaxis.Style{Attribute: vaxis.AttrDim}
 
 	if app.conn != nil {
-		titleString := fmt.Sprintf("%s:%s", app.host, app.port)
+		titleString := fmt.Sprintf("nanite (%s:%s)", app.host, app.port)
 		app.vx.SetTitle(titleString)
 
 		rateString := "manual"
@@ -53,7 +53,7 @@ func (app *App) Redraw() {
 
 		segments := []vaxis.Segment{
 			{Text: "• "},
-			{Text: titleString, Style: titleStyle},
+			{Text: app.host, Style: titleStyle},
 			{Text: " │ ", Style: delimiterStyle},
 			{Text: fmt.Sprintf("↻ %s", rateString)},
 		}

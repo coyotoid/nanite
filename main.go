@@ -170,7 +170,7 @@ func (app *App) AppendMessage(data string) {
 }
 
 func (app *App) AppendSystemMessage(format string, args ...any) {
-	st := vaxis.Style{Attribute: vaxis.AttrDim | vaxis.AttrItalic}
+	st := vaxis.Style{Foreground: vaxis.ColorGray, Attribute: vaxis.AttrDim}
 	app.pager.Segments = append(app.pager.Segments,
 		vaxis.Segment{Text: "* ", Style: st},
 		vaxis.Segment{Text: fmt.Sprintf(format, args...), Style: st},
