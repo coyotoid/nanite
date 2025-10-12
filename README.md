@@ -1,14 +1,32 @@
 # nanite
 
-it ony a [nanochat] client!
-wrote this while simultaneously learning how to use [vaxis] and it sure was an experience
+`nanite` is a terminal [Nanochat] client.
 
-## use it
+## build
 
 ```
 $ go build .
+```
+
+## usage
+
+```
+$ ./nanite
+usage: ./nanite host [port]
 $ ./nanite very.real-server.com
 ```
 
-[nanochat]: https://git.phial.org/d6/nanochat
-[vaxis]: https://git.sr.ht/~rockorager/vaxis
+keybindings:
+
+- `Ctrl+C`: quit
+- `Ctrl+L`: refresh screen
+- `Ctrl+P`: poll
+
+commands:
+
+- `/q`, `/quit`: quit
+- `/nick [nickname]`: change nick, if no arguments, show current nick
+- `/me [is listening to music]`: IRC `/me` alike
+- `/poll [n]`: change polling interval, if no arguments, poll manually
+
+[Nanochat]: https://git.phial.org/d6/nanochat

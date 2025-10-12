@@ -18,7 +18,7 @@ func (m Message) HandleOutgoing(app *App) error {
 	if err != nil {
 		return err
 	}
-	app.incoming <- SetLast(num)
+	app.incoming <- Last(num)
 
 	return nil
 }
@@ -30,15 +30,59 @@ func (p Poll) HandleOutgoing(app *App) error {
 	if err != nil {
 		return err
 	}
-	err = app.Last(num)
+	num, err = app.Last(num)
 	if err != nil {
 		return err
+	}
+	if num != 0 {
+		app.outgoing <- Stat("")
 	}
 	return nil
 }
 
-type SetLast int
+type ManualPoll int
 
-func (m SetLast) HandleIncoming(app *App) {
+func (p ManualPoll) HandleOutgoing(app *App) error {
+	num, err := app.Poll(int(p))
+	if err != nil {
+		return err
+	}
+	app.incoming <- ManualPoll(num)
+	num, err = app.Last(num)
+	if err != nil {
+		return err
+	}
+	if num != 0 {
+		app.outgoing <- Stat("")
+	}
+	return nil
+}
+
+func (p ManualPoll) HandleIncoming(app *App) {
+	if int(p) == 0 {
+		app.AppendSystemMessage("poll: no new messages")
+	} else {
+		app.AppendSystemMessage("poll: retrieving %d messages", p)
+	}
+}
+
+type Last int
+
+func (m Last) HandleIncoming(app *App) {
 	app.last = int(m)
+}
+
+type Stat string
+
+func (data Stat) HandleIncoming(app *App) {
+	app.stats = string(data)
+	app.dirty = true
+}
+func (_ Stat) HandleOutgoing(app *App) error {
+	res, err := app.Stat()
+	if err != nil {
+		return err
+	}
+	app.incoming <- Stat(res)
+	return nil
 }

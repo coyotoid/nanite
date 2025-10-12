@@ -43,50 +43,43 @@ func (app *App) Redraw() {
 		return
 	}
 	app.dirty = false
-
-	// set window title and draw titlebar
 	app.w.title.Clear()
+
 	titlebarStyle := vaxis.Style{Attribute: vaxis.AttrBold}
+	delimiterStyle := vaxis.Style{Attribute: vaxis.AttrDim}
 
 	if app.conn != nil {
-		app.vx.SetTitle(fmt.Sprintf("%s:%s", app.host, app.port))
-		rateString := "n/a"
+		titleString := fmt.Sprintf("%s:%s", app.host, app.port)
+		app.vx.SetTitle(titleString)
+
+		rateString := "manual"
 		if app.rate != 0 {
 			rateString = app.rate.String()
 		}
-		app.w.title.PrintTruncate(0,
-			vaxis.Segment{
-				Text:  "• ",
-				Style: titlebarStyle,
-			},
-			vaxis.Segment{
-				Text:  app.host,
-				Style: titlebarStyle,
-			},
-			vaxis.Segment{
-				Text:  ":",
-				Style: titlebarStyle,
-			},
-			vaxis.Segment{
-				Text:  app.port,
-				Style: titlebarStyle,
-			},
-			vaxis.Segment{
-				Text: fmt.Sprintf(" |  %s", rateString),
-			},
-		)
 
-		// let the widgets draw themselves
+		segments := []vaxis.Segment{
+			{Text: "• "},
+			{Text: titleString, Style: titlebarStyle},
+			{Text: " │ ", Style: delimiterStyle},
+			{Text: fmt.Sprintf("↻ %s", rateString)},
+		}
+
+		if app.stats != "" {
+			segments = append(segments,
+				vaxis.Segment{Text: " │ ", Style: delimiterStyle},
+				vaxis.Segment{Text: app.stats},
+			)
+		}
+
+		app.w.title.PrintTruncate(0, segments...)
 		app.pager.Layout()
 		app.pager.Draw(app.w.log)
 		app.input.Draw(app.w.input)
 	} else {
 		app.vx.SetTitle("nanite (disconnected)")
 		app.w.title.PrintTruncate(0,
-			vaxis.Segment{
-				Text:  "✖ (disconnected)",
-				Style: titlebarStyle,
-			},
+			vaxis.Segment{Text: "✕ "},
+			vaxis.Segment{Text: "disconnected", Style: titlebarStyle},
 		)
 	}
 	app.vx.Render()
@@ -115,8 +108,7 @@ func (app *App) HandleTerminalEvent(ev vaxis.Event) {
 		case ev.MatchString("down"):
 			app.pager.ScrollDown()
 		case ev.MatchString("ctrl+p"):
-			app.AppendSystemMessage("polling for new messages")
-			app.outgoing <- Poll(app.last)
+			app.outgoing <- ManualPoll(app.last)
 		case ev.MatchString("ctrl+l"):
 			app.Redraw()
 			app.vx.Refresh()
@@ -136,6 +128,7 @@ func (app *App) HandleTerminalEvent(ev vaxis.Event) {
 				message := fmt.Sprintf("%s: %s", app.nick, app.input.String())
 				app.AppendMessage(message)
 				app.outgoing <- Message(message)
+				app.outgoing <- Stat("")
 			}
 
 			app.input.SetContent("")

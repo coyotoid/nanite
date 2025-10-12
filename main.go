@@ -26,30 +26,29 @@ var CommandMap = map[string]func(*App, string){
 		args := strings.Fields(rest)
 		switch len(args) {
 		case 0:
-			app.AppendSystemMessage("your nickname is %s", app.nick)
+			app.AppendSystemMessage("nick: your nickname is %s", app.nick)
 		default:
 			app.SetNick(args[0])
-			app.AppendSystemMessage("your nickname is now %s", app.nick)
+			app.AppendSystemMessage("nick: your nickname is now %s", app.nick)
 		}
 	},
 	"poll": func(app *App, rest string) {
 		if rest == "" {
-			app.AppendSystemMessage("polling for new messages")
-			app.outgoing <- Poll(app.last)
+			app.outgoing <- ManualPoll(app.last)
 		} else {
 			num, err := strconv.Atoi(rest)
 			if err != nil {
-				app.AppendSystemMessage("invalid number %s", rest)
+				app.AppendSystemMessage("poll: invalid number %s", rest)
 			} else {
 				if num == 0 {
 					app.ticker.Stop()
 					app.rate = 0
-					app.AppendSystemMessage("disabled automatic polling")
+					app.AppendSystemMessage("poll: disabled automatic polling")
 				} else {
 					app.rate = time.Second * time.Duration(num)
 					app.ticker.Stop()
 					app.ticker = time.NewTicker(app.rate)
-					app.AppendSystemMessage("polling every %s", app.rate.String())
+					app.AppendSystemMessage("poll: polling every %s", app.rate.String())
 				}
 			}
 		}
@@ -123,7 +122,9 @@ func (app *App) Connect(host, port string) (err error) {
 	app.ticker = time.NewTicker(delta)
 
 	go func() {
+		app.outgoing <- Stat("")
 		app.Last(20)
+
 		for {
 			select {
 			case ev := <-app.outgoing:
