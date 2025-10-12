@@ -147,6 +147,7 @@ func (app *App) AppendSystemMessage(format string, args ...any) {
 
 func (app *App) SetNick(nick string) {
 	app.input.SetPrompt(fmt.Sprintf("%s: ", nick))
+	app.input.Prompt.Attribute = vaxis.AttrBold
 	app.nick = nick
 }
 
