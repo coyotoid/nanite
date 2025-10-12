@@ -76,7 +76,6 @@ type Stat string
 
 func (data Stat) HandleIncoming(app *App) {
 	app.stats = string(data)
-	app.dirty = true
 }
 func (_ Stat) HandleOutgoing(app *App) error {
 	res, err := app.Stat()

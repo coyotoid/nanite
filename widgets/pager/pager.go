@@ -111,17 +111,14 @@ func (m *Model) layoutSlow() {
 				total += char.Width
 			}
 
-			switch {
-			case total > cols:
-			case total+col > cols:
+			if total > cols || total+col > cols {
 				m.lines = append(m.lines, l)
 				l = &line{}
 				col = 0
-			default:
 			}
 
 			for _, char := range chars {
-				if uniseg.HasTrailingLineBreakInString(char.Grapheme) {
+				if uniseg.HasTrailingLineBreakInString(char.Grapheme) && col != 0 {
 					m.lines = append(m.lines, l)
 					l = &line{}
 					col = 0

@@ -90,7 +90,6 @@ type App struct {
 	}
 	pager *pager.Model
 	input *textinput.Model
-	dirty bool
 }
 
 func (app *App) Connect(host, port string) (err error) {
@@ -168,7 +167,6 @@ func (app *App) AppendMessage(data string) {
 	)
 	app.last += 1
 	app.pager.Offset = math.MaxInt
-	app.dirty = true
 }
 
 func (app *App) AppendSystemMessage(format string, args ...any) {
@@ -179,7 +177,6 @@ func (app *App) AppendSystemMessage(format string, args ...any) {
 		vaxis.Segment{Text: "\n"},
 	)
 	app.pager.Offset = math.MaxInt
-	app.dirty = true
 }
 
 func (app *App) SetNick(nick string) {

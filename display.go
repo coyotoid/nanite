@@ -29,8 +29,6 @@ func (app *App) FinishUI() {
 }
 
 func (app *App) resize() {
-	app.dirty = true
-
 	win := app.vx.Window()
 	app.w.log = win.New(0, 1, win.Width, win.Height-2)
 	app.w.title = win.New(0, 0, win.Width, 1)
@@ -39,13 +37,9 @@ func (app *App) resize() {
 }
 
 func (app *App) Redraw() {
-	if !app.dirty {
-		return
-	}
-	app.dirty = false
 	app.w.title.Clear()
 
-	titlebarStyle := vaxis.Style{Attribute: vaxis.AttrBold}
+	titleStyle := vaxis.Style{Attribute: vaxis.AttrBold}
 	delimiterStyle := vaxis.Style{Attribute: vaxis.AttrDim}
 
 	if app.conn != nil {
@@ -59,7 +53,7 @@ func (app *App) Redraw() {
 
 		segments := []vaxis.Segment{
 			{Text: "• "},
-			{Text: titleString, Style: titlebarStyle},
+			{Text: titleString, Style: titleStyle},
 			{Text: " │ ", Style: delimiterStyle},
 			{Text: fmt.Sprintf("↻ %s", rateString)},
 		}
@@ -79,16 +73,52 @@ func (app *App) Redraw() {
 		app.vx.SetTitle("nanite (disconnected)")
 		app.w.title.PrintTruncate(0,
 			vaxis.Segment{Text: "✕ "},
-			vaxis.Segment{Text: "disconnected", Style: titlebarStyle},
+			vaxis.Segment{Text: "disconnected", Style: titleStyle},
 		)
 	}
 	app.vx.Render()
 }
 
-func (app *App) HandleTerminalEvent(ev vaxis.Event) {
-	app.dirty = true
+func (app *App) submitTextInput() {
+	if len(app.input.Characters()) == 0 {
+		return
+	}
 
+	if app.input.Characters()[0].Grapheme == "/" {
+		name, rest, _ := strings.Cut(app.input.String()[1:], " ")
+		if cmd, ok := CommandMap[name]; ok {
+			cmd(app, rest)
+		} else {
+			app.AppendSystemMessage("unknown command \"%s\"", name)
+		}
+	} else {
+		message := fmt.Sprintf("%s: %s", app.nick, app.input.String())
+		app.AppendMessage(message)
+		app.outgoing <- Message(message)
+		app.outgoing <- Stat("")
+	}
+
+	app.input.SetContent("")
+}
+
+func (app *App) HandleTerminalEvent(ev vaxis.Event) {
 	switch ev := ev.(type) {
+	case vaxis.Key:
+		switch ev.String() {
+		case "Up":
+			app.pager.ScrollUp()
+		case "Down":
+			app.pager.ScrollDown()
+		case "Enter":
+			app.submitTextInput()
+		case "Ctrl+p":
+			app.outgoing <- ManualPoll(app.last)
+		case "Ctrl+l":
+			app.Redraw()
+			app.vx.Refresh()
+		case "Ctrl+c":
+			app.stop()
+		}
 	case vaxis.Mouse:
 		switch ev.Button {
 		case vaxis.MouseWheelUp:
@@ -98,41 +128,6 @@ func (app *App) HandleTerminalEvent(ev vaxis.Event) {
 		}
 	case vaxis.Resize:
 		app.resize()
-	case vaxis.Key:
-		if ev.MatchString("ctrl+c") {
-			app.stop()
-		}
-		switch {
-		case ev.MatchString("up"):
-			app.pager.ScrollUp()
-		case ev.MatchString("down"):
-			app.pager.ScrollDown()
-		case ev.MatchString("ctrl+p"):
-			app.outgoing <- ManualPoll(app.last)
-		case ev.MatchString("ctrl+l"):
-			app.Redraw()
-			app.vx.Refresh()
-			app.dirty = false
-		case ev.MatchString("enter"):
-			if len(app.input.Characters()) == 0 {
-				break
-			}
-			if app.input.Characters()[0].Grapheme == "/" {
-				name, rest, _ := strings.Cut(app.input.String()[1:], " ")
-				if cmd, ok := CommandMap[name]; ok {
-					cmd(app, rest)
-				} else {
-					app.AppendSystemMessage("unknown command \"%s\"", name)
-				}
-			} else {
-				message := fmt.Sprintf("%s: %s", app.nick, app.input.String())
-				app.AppendMessage(message)
-				app.outgoing <- Message(message)
-				app.outgoing <- Stat("")
-			}
-
-			app.input.SetContent("")
-		}
 	}
 
 	app.input.Update(ev)
