@@ -8,7 +8,7 @@ import (
 	"math"
 	"net"
 	"os"
-	"sync"
+	"strings"
 	"time"
 
 	"codeberg.org/lobo/nanite/widgets/pager"
@@ -20,14 +20,38 @@ var (
 	ErrAlreadyConnected = errors.New("already connected")
 )
 
+var CommandMap = map[string]func(*App, string){
+	"nick": func(app *App, rest string) {
+		args := strings.Fields(rest)
+		switch len(args) {
+		case 0:
+			app.AppendSystemMessage("your nickname is %s", app.nick)
+		default:
+			app.SetNick(args[0])
+			app.AppendSystemMessage("your nickname is now %s", app.nick)
+		}
+	},
+	"me": func(app *App, rest string) {
+		msg := fmt.Sprintf("%s %s", app.nick, rest)
+		app.AppendMessage(msg)
+		app.outgoing <- Message(msg)
+	},
+	"quit": func(app *App, rest string) {
+		app.stop()
+	},
+	"q": func(app *App, rest string) {
+		app.stop()
+	},
+}
+
 type App struct {
 	ctx  context.Context
 	stop context.CancelFunc
-	mu   sync.RWMutex
 
 	conn       net.Conn
 	scanner    *bufio.Scanner
 	host, port string
+	stats      string
 
 	nick   string
 	last   int
@@ -61,6 +85,7 @@ func (app *App) Connect(host, port string) (err error) {
 	app.ticker = time.NewTicker(2 * time.Second)
 
 	go func() {
+		app.Last(50)
 		for {
 			select {
 			case ev := <-app.outgoing:
@@ -80,6 +105,18 @@ func (app *App) Disconnect() {
 		app.conn.Close()
 		app.conn = nil
 	}
+	if app.ticker != nil {
+		app.ticker.Stop()
+		app.ticker = nil
+	}
+	if app.incoming != nil {
+		close(app.incoming)
+		app.incoming = nil
+	}
+	if app.outgoing != nil {
+		close(app.outgoing)
+		app.outgoing = nil
+	}
 }
 
 func (app *App) AppendMessage(data string) {
@@ -92,36 +129,20 @@ func (app *App) AppendMessage(data string) {
 	app.dirty = true
 }
 
-func (app *App) HandleTerminalEvent(ev vaxis.Event) {
+func (app *App) AppendSystemMessage(format string, args ...any) {
+	st := vaxis.Style{Attribute: vaxis.AttrDim | vaxis.AttrItalic}
+	app.pager.Segments = append(app.pager.Segments,
+		vaxis.Segment{Text: "* ", Style: st},
+		vaxis.Segment{Text: fmt.Sprintf(format, args...), Style: st},
+		vaxis.Segment{Text: "\n"},
+	)
+	app.pager.Offset = math.MaxInt
 	app.dirty = true
+}
 
-	switch ev := ev.(type) {
-	case vaxis.Resize:
-		app.resize()
-	case vaxis.Key:
-		if ev.MatchString("ctrl+c") {
-			app.stop()
-		}
-		switch {
-		case ev.MatchString("up"):
-			app.pager.ScrollUp()
-		case ev.MatchString("down"):
-			app.pager.ScrollDown()
-		case ev.MatchString("ctrl+l"):
-			app.Redraw()
-			app.vx.Refresh()
-			app.dirty = false
-		case ev.MatchString("enter"):
-			if len(app.input.Characters()) != 0 {
-				message := fmt.Sprintf("%s: %s", app.nick, app.input.String())
-				app.AppendMessage(message)
-				app.outgoing <- Message(message)
-				app.input.SetContent("")
-			}
-		}
-	}
-
-	app.input.Update(ev)
+func (app *App) SetNick(nick string) {
+	app.input.SetPrompt(fmt.Sprintf("%s: ", nick))
+	app.nick = nick
 }
 
 func main() {
@@ -148,8 +169,7 @@ func main() {
 	app.InitUI()
 	defer app.FinishUI()
 
-	app.nick = "wolfdog"
-	go app.Last(20)
+	app.SetNick("wolfdog")
 
 	for {
 		select {
@@ -162,6 +182,7 @@ func main() {
 		case <-app.ctx.Done():
 			return
 		}
+
 		app.Redraw()
 	}
 }

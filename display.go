@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"codeberg.org/lobo/nanite/widgets/pager"
 	"git.sr.ht/~rockorager/vaxis"
@@ -31,9 +32,8 @@ func (app *App) resize() {
 	app.dirty = true
 
 	win := app.vx.Window()
-	app.w.log = win.New(0, 1, win.Width, win.Height-3)
+	app.w.log = win.New(0, 1, win.Width, win.Height-2)
 	app.w.title = win.New(0, 0, win.Width, 1)
-	app.w.status = win.New(0, win.Height-2, win.Width, 1)
 	app.w.input = win.New(0, win.Height-1, win.Width, 1)
 	app.pager.Offset = math.MaxInt
 }
@@ -49,7 +49,7 @@ func (app *App) Redraw() {
 	titlebarStyle := vaxis.Style{Attribute: vaxis.AttrBold}
 
 	if app.conn != nil {
-		app.vx.SetTitle(fmt.Sprintf("nanite (%s:%s)", app.host, app.port))
+		app.vx.SetTitle(fmt.Sprintf("%s:%s", app.host, app.port))
 		app.w.title.PrintTruncate(0,
 			vaxis.Segment{
 				Text:  "• ",
@@ -78,19 +78,59 @@ func (app *App) Redraw() {
 		)
 	}
 
-	// draw statusbar
-	statusStyle := vaxis.Style{Attribute: vaxis.AttrReverse}
-	app.w.status.Fill(vaxis.Cell{Style: statusStyle})
-	app.w.status.PrintTruncate(0,
-		vaxis.Segment{
-			Text:  app.nick,
-			Style: statusStyle,
-		},
-	)
-
 	// let the widgets draw themselves
 	app.pager.Layout()
 	app.pager.Draw(app.w.log)
 	app.input.Draw(app.w.input)
 	app.vx.Render()
+}
+
+func (app *App) HandleTerminalEvent(ev vaxis.Event) {
+	app.dirty = true
+
+	switch ev := ev.(type) {
+	case vaxis.Mouse:
+		switch ev.Button {
+		case vaxis.MouseWheelUp:
+			app.pager.ScrollUpN(2)
+		case vaxis.MouseWheelDown:
+			app.pager.ScrollDownN(2)
+		}
+	case vaxis.Resize:
+		app.resize()
+	case vaxis.Key:
+		if ev.MatchString("ctrl+c") {
+			app.stop()
+		}
+		switch {
+		case ev.MatchString("up"):
+			app.pager.ScrollUp()
+		case ev.MatchString("down"):
+			app.pager.ScrollDown()
+		case ev.MatchString("ctrl+l"):
+			app.Redraw()
+			app.vx.Refresh()
+			app.dirty = false
+		case ev.MatchString("enter"):
+			if len(app.input.Characters()) == 0 {
+				break
+			}
+			if app.input.Characters()[0].Grapheme == "/" {
+				name, rest, _ := strings.Cut(app.input.String()[1:], " ")
+				if cmd, ok := CommandMap[name]; ok {
+					cmd(app, rest)
+				} else {
+					app.AppendSystemMessage("unknown command \"%s\"", name)
+				}
+			} else {
+				message := fmt.Sprintf("%s: %s", app.nick, app.input.String())
+				app.AppendMessage(message)
+				app.outgoing <- Message(message)
+			}
+
+			app.input.SetContent("")
+		}
+	}
+
+	app.input.Update(ev)
 }
