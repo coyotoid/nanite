@@ -104,7 +104,7 @@ func (app *App) Connect(host, port string) (err error) {
 		return err
 	}
 	app.scanner = bufio.NewScanner(app.conn)
-	app.incoming = make(chan IncomingEvent)
+	app.incoming = make(chan IncomingEvent, 256)
 	app.outgoing = make(chan OutgoingEvent, 256)
 	app.error = make(chan error)
 
