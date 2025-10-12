@@ -59,6 +59,7 @@ type App struct {
 
 	incoming chan IncomingEvent
 	outgoing chan OutgoingEvent
+	error    chan error
 
 	vx *vaxis.Vaxis
 	w  struct {
@@ -82,14 +83,18 @@ func (app *App) Connect(host, port string) (err error) {
 	app.scanner = bufio.NewScanner(app.conn)
 	app.incoming = make(chan IncomingEvent)
 	app.outgoing = make(chan OutgoingEvent)
-	app.ticker = time.NewTicker(2 * time.Second)
+	app.error = make(chan error)
+	app.ticker = time.NewTicker(1 * time.Second)
 
 	go func() {
 		app.Last(50)
 		for {
 			select {
 			case ev := <-app.outgoing:
-				ev.HandleOutgoing(app)
+				if err := ev.HandleOutgoing(app); err != nil {
+					app.error <- err
+					return
+				}
 			case <-app.ctx.Done():
 				return
 			}
@@ -179,6 +184,9 @@ func main() {
 			ev.HandleIncoming(&app)
 		case <-app.ticker.C:
 			app.outgoing <- Poll(app.last)
+		case err := <-app.error:
+			app.FinishUI()
+			panic(err)
 		case <-app.ctx.Done():
 			return
 		}

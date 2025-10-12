@@ -38,6 +38,10 @@ func (app *App) Poll(since int) (num int, err error) {
 }
 
 func (app *App) Last(n int) (err error) {
+	if n == 0 {
+		return nil
+	}
+
 	if _, err := fmt.Fprintf(app.conn, "LAST %d\n", n); err != nil {
 		return err
 	}
@@ -52,6 +56,10 @@ func (app *App) Last(n int) (err error) {
 		return err
 	}
 
+	if nsrv == 0 {
+		goto count
+	}
+
 	for range nsrv {
 		if !app.scanner.Scan() {
 			return app.scanner.Err()
@@ -59,6 +67,7 @@ func (app *App) Last(n int) (err error) {
 		app.incoming <- Message(app.scanner.Text())
 	}
 
+count:
 	var last int
 	if !app.scanner.Scan() {
 		return app.scanner.Err()
