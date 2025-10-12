@@ -56,18 +56,15 @@ func (app *App) Last(n int) (err error) {
 		return err
 	}
 
-	if nsrv == 0 {
-		goto count
-	}
-
-	for range nsrv {
-		if !app.scanner.Scan() {
-			return app.scanner.Err()
+	if nsrv != 0 {
+		for range nsrv {
+			if !app.scanner.Scan() {
+				return app.scanner.Err()
+			}
+			app.incoming <- Message(app.scanner.Text())
 		}
-		app.incoming <- Message(app.scanner.Text())
 	}
 
-count:
 	var last int
 	if !app.scanner.Scan() {
 		return app.scanner.Err()

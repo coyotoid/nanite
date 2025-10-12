@@ -82,7 +82,7 @@ func (app *App) Connect(host, port string) (err error) {
 	}
 	app.scanner = bufio.NewScanner(app.conn)
 	app.incoming = make(chan IncomingEvent)
-	app.outgoing = make(chan OutgoingEvent)
+	app.outgoing = make(chan OutgoingEvent, 256)
 	app.error = make(chan error)
 	app.ticker = time.NewTicker(1 * time.Second)
 
