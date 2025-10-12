@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,28 @@ var CommandMap = map[string]func(*App, string){
 		default:
 			app.SetNick(args[0])
 			app.AppendSystemMessage("your nickname is now %s", app.nick)
+		}
+	},
+	"poll": func(app *App, rest string) {
+		if rest == "" {
+			app.AppendSystemMessage("polling for new messages")
+			app.outgoing <- Poll(app.last)
+		} else {
+			num, err := strconv.Atoi(rest)
+			if err != nil {
+				app.AppendSystemMessage("invalid number %s", rest)
+			} else {
+				if num == 0 {
+					app.ticker.Stop()
+					app.rate = 0
+					app.AppendSystemMessage("disabled automatic polling")
+				} else {
+					app.rate = time.Second * time.Duration(num)
+					app.ticker.Stop()
+					app.ticker = time.NewTicker(app.rate)
+					app.AppendSystemMessage("polling every %s", app.rate.String())
+				}
+			}
 		}
 	},
 	"me": func(app *App, rest string) {
@@ -55,6 +78,7 @@ type App struct {
 
 	nick   string
 	last   int
+	rate   time.Duration
 	ticker *time.Ticker
 
 	incoming chan IncomingEvent
@@ -84,10 +108,22 @@ func (app *App) Connect(host, port string) (err error) {
 	app.incoming = make(chan IncomingEvent)
 	app.outgoing = make(chan OutgoingEvent, 256)
 	app.error = make(chan error)
-	app.ticker = time.NewTicker(1 * time.Second)
+
+	// Calculate latency
+	now := time.Now()
+	_, err = app.Poll(0)
+	if err != nil {
+		app.Disconnect()
+		return err
+	}
+	delta := time.Since(now).Round(time.Second)
+	delta = min(max(time.Second, delta*3/2), 5*time.Second)
+
+	app.rate = delta
+	app.ticker = time.NewTicker(delta)
 
 	go func() {
-		app.Last(50)
+		app.Last(20)
 		for {
 			select {
 			case ev := <-app.outgoing:
@@ -167,13 +203,14 @@ func main() {
 	app.ctx, app.stop = context.WithCancel(context.Background())
 	defer app.stop()
 
+	app.InitUI()
+	app.Redraw()
+	defer app.FinishUI()
+
 	if err := app.Connect(args[1], port); err != nil {
 		panic(err)
 	}
 	defer app.Disconnect()
-
-	app.InitUI()
-	defer app.FinishUI()
 
 	app.SetNick("wolfdog")
 

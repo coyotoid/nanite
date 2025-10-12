@@ -50,6 +50,10 @@ func (app *App) Redraw() {
 
 	if app.conn != nil {
 		app.vx.SetTitle(fmt.Sprintf("%s:%s", app.host, app.port))
+		rateString := "n/a"
+		if app.rate != 0 {
+			rateString = app.rate.String()
+		}
 		app.w.title.PrintTruncate(0,
 			vaxis.Segment{
 				Text:  "• ",
@@ -67,7 +71,15 @@ func (app *App) Redraw() {
 				Text:  app.port,
 				Style: titlebarStyle,
 			},
+			vaxis.Segment{
+				Text: fmt.Sprintf(" |  %s", rateString),
+			},
 		)
+
+		// let the widgets draw themselves
+		app.pager.Layout()
+		app.pager.Draw(app.w.log)
+		app.input.Draw(app.w.input)
 	} else {
 		app.vx.SetTitle("nanite (disconnected)")
 		app.w.title.PrintTruncate(0,
@@ -77,11 +89,6 @@ func (app *App) Redraw() {
 			},
 		)
 	}
-
-	// let the widgets draw themselves
-	app.pager.Layout()
-	app.pager.Draw(app.w.log)
-	app.input.Draw(app.w.input)
 	app.vx.Render()
 }
 
@@ -107,6 +114,9 @@ func (app *App) HandleTerminalEvent(ev vaxis.Event) {
 			app.pager.ScrollUp()
 		case ev.MatchString("down"):
 			app.pager.ScrollDown()
+		case ev.MatchString("ctrl+p"):
+			app.AppendSystemMessage("polling for new messages")
+			app.outgoing <- Poll(app.last)
 		case ev.MatchString("ctrl+l"):
 			app.Redraw()
 			app.vx.Refresh()
