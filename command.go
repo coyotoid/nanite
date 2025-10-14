@@ -2,129 +2,92 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
-func (app *App) Stat() (res string, err error) {
-	if _, err := app.conn.Write([]byte("STAT\n")); err != nil {
-		return "", err
-	}
+type Command func(*App, string)
 
-	var str strings.Builder
-	for range 3 {
-		if !app.conn.Scanner.Scan() {
-			return "", app.conn.Scanner.Err()
-		}
-		str.Write(app.conn.Scanner.Bytes())
-		str.WriteRune(' ')
-	}
+var CommandMap map[string]Command
 
-	return str.String(), nil
-}
-
-func (app *App) Send(data string) (num int, err error) {
-	if _, err := fmt.Fprintf(app.conn, "SEND %s\n", data); err != nil {
-		return 0, err
-	}
-
-	if !app.conn.Scanner.Scan() {
-		return 0, app.conn.Scanner.Err()
-	}
-	numRaw := app.conn.Scanner.Text()
-	num, err = strconv.Atoi(numRaw)
-	if err != nil {
-		return 0, err
-	}
-	return num, nil
-}
-
-func (app *App) Poll(since int) (num int, err error) {
-	if _, err := fmt.Fprintf(app.conn, "POLL %d\n", since); err != nil {
-		return 0, err
-	}
-
-	if !app.conn.Scanner.Scan() {
-		return 0, app.conn.Scanner.Err()
-	}
-	numRaw := app.conn.Scanner.Text()
-	num, err = strconv.Atoi(numRaw)
-	if err != nil {
-		return 0, err
-	}
-	return num, nil
-}
-
-func (app *App) Skip(since int) (num int, err error) {
-	if _, err := fmt.Fprintf(app.conn, "SKIP %d\n", since); err != nil {
-		return 0, err
-	}
-
-	if !app.conn.Scanner.Scan() {
-		return 0, app.conn.Scanner.Err()
-	}
-	num, err = strconv.Atoi(app.conn.Scanner.Text())
-	if err != nil {
-		return 0, err
-	}
-
-	for range num {
-		if !app.conn.Scanner.Scan() {
-			return 0, err
-		}
-		app.incoming <- MessageEvent(app.conn.Scanner.Text())
-	}
-
-	if !app.conn.Scanner.Scan() {
-		return 0, app.conn.Scanner.Err()
-	}
-	last, err := strconv.Atoi(app.conn.Scanner.Text())
-	if err != nil {
-		return 0, err
-	}
-	app.incoming <- SetLastEvent(last)
-
-	return num, nil
-}
-
-func (app *App) Last(n int) (num int, err error) {
-	if n == 0 {
-		return 0, nil
-	}
-
-	if _, err := fmt.Fprintf(app.conn, "LAST %d\n", n); err != nil {
-		return 0, err
-	}
-
-	var nsrv int
-	if !app.conn.Scanner.Scan() {
-		return 0, app.conn.Scanner.Err()
-	}
-	nsrvRaw := app.conn.Scanner.Text()
-	nsrv, err = strconv.Atoi(nsrvRaw)
-	if err != nil {
-		return 0, err
-	}
-
-	if nsrv != 0 {
-		for range nsrv {
-			if !app.conn.Scanner.Scan() {
-				return 0, app.conn.Scanner.Err()
+func initCommandMap() {
+	CommandMap = map[string]Command{
+		"help": func(app *App, rest string) {
+			var s strings.Builder
+			for name, _ := range CommandMap {
+				if name == "q" {
+					continue
+				}
+				s.WriteString(name)
+				s.WriteRune(' ')
 			}
-			app.incoming <- MessageEvent(app.conn.Scanner.Text())
-		}
+			app.AppendSystemMessage("commands: %s", s.String())
+		},
+		"dial": func(app *App, rest string) {
+			args := strings.Fields(rest)
+			if len(args) < 1 || len(args) > 2 {
+				app.AppendSystemMessage("usage: /connect host [port]")
+			}
+			host := args[0]
+			port := "44322"
+			if len(args) == 2 {
+				port = args[1]
+			}
+			app.outgoing <- DialEvent{host, port}
+		},
+		"hangup": func(app *App, rest string) {
+			app.outgoing <- HangupEvent{}
+		},
+		"nick": func(app *App, rest string) {
+			if rest == "" {
+				app.AppendSystemMessage("nick: your nickname is %s", app.nick)
+			} else {
+				app.SetNick(rest)
+				app.AppendSystemMessage("nick: your nickname is now %s", app.nick)
+				if err := os.WriteFile(path.Join(app.cfgHome, "nick"), []byte(rest), 0o700); err != nil {
+					app.AppendSystemMessage("nick: failed to persist nickname: %s", err)
+				}
+			}
+		},
+		"poll": func(app *App, rest string) {
+			if rest == "" {
+				app.outgoing <- ManualPollEvent(app.last)
+			} else {
+				num, err := strconv.Atoi(rest)
+				if err != nil {
+					app.AppendSystemMessage("poll: invalid number %s", rest)
+				} else {
+					if num == 0 {
+						app.conn.ticker.Stop()
+						app.conn.rate = 0
+						app.AppendSystemMessage("poll: disabled automatic polling")
+					} else {
+						app.conn.rate = time.Second * time.Duration(num)
+						app.conn.ticker.Stop()
+						app.conn.ticker = time.NewTicker(app.conn.rate)
+						app.AppendSystemMessage("poll: polling every %s", app.conn.rate.String())
+					}
+				}
+			}
+		},
+		"me": func(app *App, rest string) {
+			msg := fmt.Sprintf("%s %s", app.nick, rest)
+			app.AppendMessage(msg)
+			app.outgoing <- MessageEvent(msg)
+		},
+		"clear": func(app *App, rest string) {
+			clear(app.pager.Segments)
+			app.pager.Layout()
+			app.AppendSystemMessage("cleared message history")
+		},
+		"quit": func(app *App, rest string) {
+			app.stop()
+		},
+		"q": func(app *App, rest string) {
+			app.stop()
+		},
 	}
-
-	var last int
-	if !app.conn.Scanner.Scan() {
-		return 0, app.conn.Scanner.Err()
-	}
-	lastRaw := app.conn.Scanner.Text()
-	last, err = strconv.Atoi(lastRaw)
-	if err != nil {
-		return 0, err
-	}
-	app.incoming <- SetLastEvent(last)
-
-	return nsrv, nil
 }

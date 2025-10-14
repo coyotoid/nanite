@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,87 +16,6 @@ import (
 	"git.sr.ht/~rockorager/vaxis"
 	"git.sr.ht/~rockorager/vaxis/widgets/textinput"
 )
-
-var CommandMap map[string]func(*App, string)
-
-func init() {
-	CommandMap = map[string]func(*App, string){
-		"help": func(app *App, rest string) {
-			var s strings.Builder
-			for name, _ := range CommandMap {
-				if name == "q" {
-					continue
-				}
-				s.WriteString(name)
-				s.WriteRune(' ')
-			}
-			app.AppendSystemMessage("commands: %s", s.String())
-		},
-		"dial": func(app *App, rest string) {
-			args := strings.Fields(rest)
-			if len(args) < 1 || len(args) > 2 {
-				app.AppendSystemMessage("usage: /connect host [port]")
-			}
-			host := args[0]
-			port := "44322"
-			if len(args) == 2 {
-				port = args[1]
-			}
-			app.outgoing <- DialEvent{host, port}
-		},
-		"hangup": func(app *App, rest string) {
-			app.outgoing <- HangupEvent{}
-		},
-		"nick": func(app *App, rest string) {
-			if rest == "" {
-				app.AppendSystemMessage("nick: your nickname is %s", app.nick)
-			} else {
-				app.SetNick(rest)
-				app.AppendSystemMessage("nick: your nickname is now %s", app.nick)
-				if err := os.WriteFile(path.Join(app.cfgHome, "nick"), []byte(rest), 0o700); err != nil {
-					app.AppendSystemMessage("nick: failed to persist nickname: %s", err)
-				}
-			}
-		},
-		"poll": func(app *App, rest string) {
-			if rest == "" {
-				app.outgoing <- ManualPollEvent(app.last)
-			} else {
-				num, err := strconv.Atoi(rest)
-				if err != nil {
-					app.AppendSystemMessage("poll: invalid number %s", rest)
-				} else {
-					if num == 0 {
-						app.conn.ticker.Stop()
-						app.conn.rate = 0
-						app.AppendSystemMessage("poll: disabled automatic polling")
-					} else {
-						app.conn.rate = time.Second * time.Duration(num)
-						app.conn.ticker.Stop()
-						app.conn.ticker = time.NewTicker(app.conn.rate)
-						app.AppendSystemMessage("poll: polling every %s", app.conn.rate.String())
-					}
-				}
-			}
-		},
-		"me": func(app *App, rest string) {
-			msg := fmt.Sprintf("%s %s", app.nick, rest)
-			app.AppendMessage(msg)
-			app.outgoing <- MessageEvent(msg)
-		},
-		"clear": func(app *App, rest string) {
-			app.pager.Segments = []vaxis.Segment{}
-			app.pager.Layout()
-			app.AppendSystemMessage("cleared message history")
-		},
-		"quit": func(app *App, rest string) {
-			app.stop()
-		},
-		"q": func(app *App, rest string) {
-			app.stop()
-		},
-	}
-}
 
 type App struct {
 	ctx  context.Context
@@ -133,9 +51,13 @@ type Conn struct {
 }
 
 func (app *App) AppendMessage(data string) {
-	// TODO: make messages without a nick italic
+	nick, _, found := strings.Cut(data, ": ")
+	style := vaxis.Style{}
+	if !found || strings.TrimSpace(nick) != nick {
+		style.Attribute = vaxis.AttrItalic
+	}
 	app.pager.Segments = append(app.pager.Segments,
-		vaxis.Segment{Text: data},
+		vaxis.Segment{Text: data, Style: style},
 		vaxis.Segment{Text: "\n"},
 	)
 	app.last += 1
@@ -228,6 +150,10 @@ func (app *App) Finish() {
 	app.stop()
 	app.FinishUI()
 	HangupEvent{}.HandleOutgoing(app)
+}
+
+func init() {
+	initCommandMap()
 }
 
 func main() {
