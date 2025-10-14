@@ -37,23 +37,22 @@ func (app *App) resize() {
 }
 
 func (app *App) Redraw() {
-	app.w.title.Clear()
-
 	titleStyle := vaxis.Style{Attribute: vaxis.AttrBold}
 	delimiterStyle := vaxis.Style{Attribute: vaxis.AttrDim}
 
+	app.w.title.Clear()
 	if app.conn != nil {
-		titleString := fmt.Sprintf("nanite (%s:%s)", app.host, app.port)
+		titleString := fmt.Sprintf("nanite (%s:%s)", app.conn.host, app.conn.port)
 		app.vx.SetTitle(titleString)
 
 		rateString := "manual"
-		if app.rate != 0 {
-			rateString = app.rate.String()
+		if app.conn.rate != 0 {
+			rateString = app.conn.rate.String()
 		}
 
 		segments := []vaxis.Segment{
 			{Text: "• "},
-			{Text: app.host, Style: titleStyle},
+			{Text: app.conn.host, Style: titleStyle},
 			{Text: " │ ", Style: delimiterStyle},
 			{Text: fmt.Sprintf("↻ %s", rateString)},
 		}
@@ -66,9 +65,6 @@ func (app *App) Redraw() {
 		}
 
 		app.w.title.PrintTruncate(0, segments...)
-		app.pager.Layout()
-		app.pager.Draw(app.w.log)
-		app.input.Draw(app.w.input)
 	} else {
 		app.vx.SetTitle("nanite (disconnected)")
 		app.w.title.PrintTruncate(0,
@@ -76,6 +72,9 @@ func (app *App) Redraw() {
 			vaxis.Segment{Text: "disconnected", Style: titleStyle},
 		)
 	}
+	app.pager.Layout()
+	app.pager.Draw(app.w.log)
+	app.input.Draw(app.w.input)
 	app.vx.Render()
 }
 
@@ -94,8 +93,8 @@ func (app *App) submitTextInput() {
 	} else {
 		message := fmt.Sprintf("%s: %s", app.nick, app.input.String())
 		app.AppendMessage(message)
-		app.outgoing <- Message(message)
-		app.outgoing <- Stat("")
+		app.outgoing <- MessageEvent(message)
+		app.outgoing <- StatEvent("")
 	}
 
 	app.input.SetContent("")
@@ -112,7 +111,7 @@ func (app *App) HandleTerminalEvent(ev vaxis.Event) {
 		case "Enter":
 			app.submitTextInput()
 		case "Ctrl+p":
-			app.outgoing <- ManualPoll(app.last)
+			app.outgoing <- ManualPollEvent(app.last)
 		case "Ctrl+l":
 			app.Redraw()
 			app.vx.Refresh()

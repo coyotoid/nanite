@@ -13,10 +13,10 @@ func (app *App) Stat() (res string, err error) {
 
 	var str strings.Builder
 	for range 3 {
-		if !app.scanner.Scan() {
-			return "", app.scanner.Err()
+		if !app.conn.Scanner.Scan() {
+			return "", app.conn.Scanner.Err()
 		}
-		str.Write(app.scanner.Bytes())
+		str.Write(app.conn.Scanner.Bytes())
 		str.WriteRune(' ')
 	}
 
@@ -28,10 +28,10 @@ func (app *App) Send(data string) (num int, err error) {
 		return 0, err
 	}
 
-	if !app.scanner.Scan() {
-		return 0, app.scanner.Err()
+	if !app.conn.Scanner.Scan() {
+		return 0, app.conn.Scanner.Err()
 	}
-	numRaw := app.scanner.Text()
+	numRaw := app.conn.Scanner.Text()
 	num, err = strconv.Atoi(numRaw)
 	if err != nil {
 		return 0, err
@@ -44,10 +44,10 @@ func (app *App) Poll(since int) (num int, err error) {
 		return 0, err
 	}
 
-	if !app.scanner.Scan() {
-		return 0, app.scanner.Err()
+	if !app.conn.Scanner.Scan() {
+		return 0, app.conn.Scanner.Err()
 	}
-	numRaw := app.scanner.Text()
+	numRaw := app.conn.Scanner.Text()
 	num, err = strconv.Atoi(numRaw)
 	if err != nil {
 		return 0, err
@@ -60,29 +60,29 @@ func (app *App) Skip(since int) (num int, err error) {
 		return 0, err
 	}
 
-	if !app.scanner.Scan() {
-		return 0, app.scanner.Err()
+	if !app.conn.Scanner.Scan() {
+		return 0, app.conn.Scanner.Err()
 	}
-	num, err = strconv.Atoi(app.scanner.Text())
+	num, err = strconv.Atoi(app.conn.Scanner.Text())
 	if err != nil {
 		return 0, err
 	}
 
 	for range num {
-		if !app.scanner.Scan() {
+		if !app.conn.Scanner.Scan() {
 			return 0, err
 		}
-		app.incoming <- Message(app.scanner.Text())
+		app.incoming <- MessageEvent(app.conn.Scanner.Text())
 	}
 
-	if !app.scanner.Scan() {
-		return 0, app.scanner.Err()
+	if !app.conn.Scanner.Scan() {
+		return 0, app.conn.Scanner.Err()
 	}
-	last, err := strconv.Atoi(app.scanner.Text())
+	last, err := strconv.Atoi(app.conn.Scanner.Text())
 	if err != nil {
 		return 0, err
 	}
-	app.incoming <- Last(last)
+	app.incoming <- SetLastEvent(last)
 
 	return num, nil
 }
@@ -97,10 +97,10 @@ func (app *App) Last(n int) (num int, err error) {
 	}
 
 	var nsrv int
-	if !app.scanner.Scan() {
-		return 0, app.scanner.Err()
+	if !app.conn.Scanner.Scan() {
+		return 0, app.conn.Scanner.Err()
 	}
-	nsrvRaw := app.scanner.Text()
+	nsrvRaw := app.conn.Scanner.Text()
 	nsrv, err = strconv.Atoi(nsrvRaw)
 	if err != nil {
 		return 0, err
@@ -108,23 +108,23 @@ func (app *App) Last(n int) (num int, err error) {
 
 	if nsrv != 0 {
 		for range nsrv {
-			if !app.scanner.Scan() {
-				return 0, app.scanner.Err()
+			if !app.conn.Scanner.Scan() {
+				return 0, app.conn.Scanner.Err()
 			}
-			app.incoming <- Message(app.scanner.Text())
+			app.incoming <- MessageEvent(app.conn.Scanner.Text())
 		}
 	}
 
 	var last int
-	if !app.scanner.Scan() {
-		return 0, app.scanner.Err()
+	if !app.conn.Scanner.Scan() {
+		return 0, app.conn.Scanner.Err()
 	}
-	lastRaw := app.scanner.Text()
+	lastRaw := app.conn.Scanner.Text()
 	last, err = strconv.Atoi(lastRaw)
 	if err != nil {
 		return 0, err
 	}
-	app.incoming <- Last(last)
+	app.incoming <- SetLastEvent(last)
 
 	return nsrv, nil
 }

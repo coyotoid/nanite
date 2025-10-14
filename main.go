@@ -3,82 +3,111 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"net"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
 
 	"codeberg.org/lobo/nanite/widgets/pager"
+
 	"git.sr.ht/~rockorager/vaxis"
 	"git.sr.ht/~rockorager/vaxis/widgets/textinput"
 )
 
-var (
-	ErrAlreadyConnected = errors.New("already connected")
-)
+var CommandMap map[string]func(*App, string)
 
-var CommandMap = map[string]func(*App, string){
-	"nick": func(app *App, rest string) {
-		args := strings.Fields(rest)
-		switch len(args) {
-		case 0:
-			app.AppendSystemMessage("nick: your nickname is %s", app.nick)
-		default:
-			app.SetNick(args[0])
-			app.AppendSystemMessage("nick: your nickname is now %s", app.nick)
-		}
-	},
-	"poll": func(app *App, rest string) {
-		if rest == "" {
-			app.outgoing <- ManualPoll(app.last)
-		} else {
-			num, err := strconv.Atoi(rest)
-			if err != nil {
-				app.AppendSystemMessage("poll: invalid number %s", rest)
+func init() {
+	CommandMap = map[string]func(*App, string){
+		"help": func(app *App, rest string) {
+			var s strings.Builder
+			for name, _ := range CommandMap {
+				if name == "q" {
+					continue
+				}
+				s.WriteString(name)
+				s.WriteRune(' ')
+			}
+			app.AppendSystemMessage("commands: %s", s.String())
+		},
+		"dial": func(app *App, rest string) {
+			args := strings.Fields(rest)
+			if len(args) < 1 || len(args) > 2 {
+				app.AppendSystemMessage("usage: /connect host [port]")
+			}
+			host := args[0]
+			port := "44322"
+			if len(args) == 2 {
+				port = args[1]
+			}
+			app.outgoing <- DialEvent{host, port}
+		},
+		"hangup": func(app *App, rest string) {
+			app.outgoing <- HangupEvent{}
+		},
+		"nick": func(app *App, rest string) {
+			if rest == "" {
+				app.AppendSystemMessage("nick: your nickname is %s", app.nick)
 			} else {
-				if num == 0 {
-					app.ticker.Stop()
-					app.rate = 0
-					app.AppendSystemMessage("poll: disabled automatic polling")
-				} else {
-					app.rate = time.Second * time.Duration(num)
-					app.ticker.Stop()
-					app.ticker = time.NewTicker(app.rate)
-					app.AppendSystemMessage("poll: polling every %s", app.rate.String())
+				app.SetNick(rest)
+				app.AppendSystemMessage("nick: your nickname is now %s", app.nick)
+				if err := os.WriteFile(path.Join(app.cfgHome, "nick"), []byte(rest), 0o700); err != nil {
+					app.AppendSystemMessage("nick: failed to persist nickname: %s", err)
 				}
 			}
-		}
-	},
-	"me": func(app *App, rest string) {
-		msg := fmt.Sprintf("%s %s", app.nick, rest)
-		app.AppendMessage(msg)
-		app.outgoing <- Message(msg)
-	},
-	"quit": func(app *App, rest string) {
-		app.stop()
-	},
-	"q": func(app *App, rest string) {
-		app.stop()
-	},
+		},
+		"poll": func(app *App, rest string) {
+			if rest == "" {
+				app.outgoing <- ManualPollEvent(app.last)
+			} else {
+				num, err := strconv.Atoi(rest)
+				if err != nil {
+					app.AppendSystemMessage("poll: invalid number %s", rest)
+				} else {
+					if num == 0 {
+						app.conn.ticker.Stop()
+						app.conn.rate = 0
+						app.AppendSystemMessage("poll: disabled automatic polling")
+					} else {
+						app.conn.rate = time.Second * time.Duration(num)
+						app.conn.ticker.Stop()
+						app.conn.ticker = time.NewTicker(app.conn.rate)
+						app.AppendSystemMessage("poll: polling every %s", app.conn.rate.String())
+					}
+				}
+			}
+		},
+		"me": func(app *App, rest string) {
+			msg := fmt.Sprintf("%s %s", app.nick, rest)
+			app.AppendMessage(msg)
+			app.outgoing <- MessageEvent(msg)
+		},
+		"clear": func(app *App, rest string) {
+			app.pager.Segments = []vaxis.Segment{}
+			app.pager.Layout()
+			app.AppendSystemMessage("cleared message history")
+		},
+		"quit": func(app *App, rest string) {
+			app.stop()
+		},
+		"q": func(app *App, rest string) {
+			app.stop()
+		},
+	}
 }
 
 type App struct {
 	ctx  context.Context
 	stop context.CancelFunc
 
-	conn       net.Conn
-	scanner    *bufio.Scanner
-	host, port string
-	stats      string
+	conn  *Conn
+	stats string
 
-	nick   string
-	last   int
-	rate   time.Duration
-	ticker *time.Ticker
+	nick string
+	last int
 
 	incoming chan IncomingEvent
 	outgoing chan OutgoingEvent
@@ -86,44 +115,81 @@ type App struct {
 
 	vx *vaxis.Vaxis
 	w  struct {
-		log, title, status, input vaxis.Window
+		log, title, input vaxis.Window
 	}
-	pager *pager.Model
-	input *textinput.Model
+	pager   *pager.Model
+	input   *textinput.Model
+	cfgHome string
 }
 
-func (app *App) Connect(host, port string) (err error) {
-	if app.conn != nil {
-		return ErrAlreadyConnected
-	}
-	app.host = host
-	app.port = port
-	app.conn, err = net.Dial("tcp", net.JoinHostPort(host, port))
+type Conn struct {
+	net.Conn
+	*bufio.Scanner
+	host, port string
+	rate       time.Duration
+	ticker     *time.Ticker
+	ctx        context.Context
+	stop       context.CancelFunc
+}
+
+func (app *App) AppendMessage(data string) {
+	// TODO: make messages without a nick italic
+	app.pager.Segments = append(app.pager.Segments,
+		vaxis.Segment{Text: data},
+		vaxis.Segment{Text: "\n"},
+	)
+	app.last += 1
+	app.pager.Offset = math.MaxInt
+}
+
+func (app *App) AppendSystemMessage(format string, args ...any) {
+	st := vaxis.Style{Attribute: vaxis.AttrDim}
+	app.pager.Segments = append(app.pager.Segments,
+		vaxis.Segment{Text: "* ", Style: st},
+		vaxis.Segment{Text: fmt.Sprintf(format, args...), Style: st},
+		vaxis.Segment{Text: "\n"},
+	)
+	app.pager.Offset = math.MaxInt
+}
+
+func (app *App) SetNick(nick string) {
+	nick = strings.TrimSpace(nick)
+	app.input.SetPrompt(fmt.Sprintf("%s: ", nick))
+	app.input.Prompt.Attribute = vaxis.AttrBold
+	app.nick = nick
+}
+
+func (app *App) EnsureConfigDir() error {
+	userCfg, err := os.UserConfigDir()
 	if err != nil {
 		return err
 	}
-	app.scanner = bufio.NewScanner(app.conn)
+	app.cfgHome = path.Join(userCfg, "nanite")
+	stat, err := os.Stat(app.cfgHome)
+	if err != nil {
+		if err := os.Mkdir(app.cfgHome, 0o700); err != nil {
+			return err
+		}
+	} else {
+		if !stat.IsDir() {
+			return fmt.Errorf("expected %s to be directory", app.cfgHome)
+		}
+	}
+	return nil
+}
+
+func NewApp() *App {
+	app := &App{}
+	app.ctx, app.stop = context.WithCancel(context.Background())
 	app.incoming = make(chan IncomingEvent, 256)
 	app.outgoing = make(chan OutgoingEvent, 256)
 	app.error = make(chan error)
 
-	// Calculate latency
-	now := time.Now()
-	_, err = app.Poll(0)
-	if err != nil {
-		app.Disconnect()
-		return err
+	if err := app.EnsureConfigDir(); err != nil {
+		app.error <- err
 	}
-	delta := time.Since(now).Round(time.Second)
-	delta = min(max(time.Second, delta*3/2), 5*time.Second)
-
-	app.rate = delta
-	app.ticker = time.NewTicker(delta)
 
 	go func() {
-		app.outgoing <- Stat("")
-		app.Last(20)
-
 		for {
 			select {
 			case ev := <-app.outgoing:
@@ -137,96 +203,56 @@ func (app *App) Connect(host, port string) (err error) {
 		}
 	}()
 
-	return nil
-}
-
-func (app *App) Disconnect() {
-	if app.conn != nil {
-		app.conn.Write([]byte("QUIT\n"))
-		app.conn.Close()
-		app.conn = nil
-	}
-	if app.ticker != nil {
-		app.ticker.Stop()
-		app.ticker = nil
-	}
-	if app.incoming != nil {
-		close(app.incoming)
-		app.incoming = nil
-	}
-	if app.outgoing != nil {
-		close(app.outgoing)
-		app.outgoing = nil
-	}
-}
-
-func (app *App) AppendMessage(data string) {
-	app.pager.Segments = append(app.pager.Segments,
-		vaxis.Segment{Text: data},
-		vaxis.Segment{Text: "\n"},
-	)
-	app.last += 1
-	app.pager.Offset = math.MaxInt
-}
-
-func (app *App) AppendSystemMessage(format string, args ...any) {
-	st := vaxis.Style{Foreground: vaxis.ColorGray, Attribute: vaxis.AttrDim}
-	app.pager.Segments = append(app.pager.Segments,
-		vaxis.Segment{Text: "* ", Style: st},
-		vaxis.Segment{Text: fmt.Sprintf(format, args...), Style: st},
-		vaxis.Segment{Text: "\n"},
-	)
-	app.pager.Offset = math.MaxInt
-}
-
-func (app *App) SetNick(nick string) {
-	app.input.SetPrompt(fmt.Sprintf("%s: ", nick))
-	app.input.Prompt.Attribute = vaxis.AttrBold
-	app.nick = nick
-}
-
-func main() {
-	args := os.Args
-	if len(args) < 2 || len(args) > 3 {
-		fmt.Printf("usage: %s host [port]\n", args[0])
-		os.Exit(1)
-	}
-
-	port := "44322"
-	if len(args) == 3 {
-		port = args[2]
-	}
-
-	app := App{}
-	app.ctx, app.stop = context.WithCancel(context.Background())
-	defer app.stop()
-
 	app.InitUI()
-	app.Redraw()
-	defer app.FinishUI()
 
-	if err := app.Connect(args[1], port); err != nil {
-		panic(err)
-	}
-	defer app.Disconnect()
+	return app
+}
 
-	app.SetNick("wolfdog")
-
+func (app *App) Loop() error {
 	for {
 		select {
 		case ev := <-app.vx.Events():
 			app.HandleTerminalEvent(ev)
 		case ev := <-app.incoming:
-			ev.HandleIncoming(&app)
-		case <-app.ticker.C:
-			app.outgoing <- Poll(app.last)
+			ev.HandleIncoming(app)
 		case err := <-app.error:
-			app.FinishUI()
-			panic(err)
+			return err
 		case <-app.ctx.Done():
-			return
+			return nil
 		}
-
 		app.Redraw()
+	}
+}
+
+func (app *App) Finish() {
+	app.stop()
+	app.FinishUI()
+	HangupEvent{}.HandleOutgoing(app)
+}
+
+func main() {
+	app := NewApp()
+	defer app.Finish()
+
+	args := os.Args
+	if len(args) == 2 || len(args) == 3 {
+		host := args[1]
+		port := "44322"
+		if len(args) == 3 {
+			port = args[2]
+		}
+		app.outgoing <- DialEvent{host, port}
+	}
+
+	if data, err := os.ReadFile(path.Join(app.cfgHome, "nick")); err == nil {
+		app.SetNick(string(data))
+	} else {
+		app.SetNick("someone")
+	}
+
+	app.AppendSystemMessage("welcome to nanite! :3")
+
+	if err := app.Loop(); err != nil {
+		panic(err)
 	}
 }

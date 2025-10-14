@@ -2,6 +2,8 @@
 
 `nanite` is a terminal [Nanochat] client.
 
+![](./assets/screenshot.png)
+
 ## build
 
 ```
@@ -24,10 +26,12 @@ keybindings:
 
 commands:
 
+- `/dial hostname`: connect to server
+- `/hangup`: disconnect
 - `/q`, `/quit`: quit
 - `/nick [nickname]`: change nick, if no arguments, show current nick
-- `/me [is listening to music]`: IRC `/me` alike
-- `/poll [n]`: change polling interval, if no arguments, poll manually
+- `/me`: IRC `/me` alike
+- `/poll [seconds]`: change polling interval, if no arguments, poll manually
 
 ## won't support (yet)
 

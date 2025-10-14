@@ -1,5 +1,13 @@
 package main
 
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"net"
+	"time"
+)
+
 type IncomingEvent interface {
 	HandleIncoming(*App)
 }
@@ -7,26 +15,121 @@ type OutgoingEvent interface {
 	HandleOutgoing(*App) error
 }
 
-type Message string
-
-func (m Message) HandleIncoming(app *App) {
-	app.AppendMessage(string(m))
-
+type DialEvent struct {
+	Host, Port string
 }
-func (m Message) HandleOutgoing(app *App) error {
-	num, err := app.Send(string(m))
+
+func (ev DialEvent) HandleIncoming(app *App) {
+	app.AppendSystemMessage("connected to %s:%s", ev.Host, ev.Port)
+}
+
+func (ev DialEvent) HandleOutgoing(app *App) error {
+	var err error
+
+	if app.conn != nil {
+		app.incoming <- SystemMessageEvent(fmt.Sprintf("already connected to %s:%s", app.conn.host, app.conn.port))
+		return nil
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort(ev.Host, ev.Port))
 	if err != nil {
 		return err
 	}
-	app.incoming <- Last(num)
+	ctx, stop := context.WithCancel(app.ctx)
+
+	app.conn = &Conn{
+		Conn:    conn,
+		Scanner: bufio.NewScanner(conn),
+		host:    ev.Host,
+		port:    ev.Port,
+		ctx:     ctx,
+		stop:    stop,
+	}
+
+	// calculate latency
+	latStart := time.Now()
+	_, err = app.Poll(0)
+	if err != nil {
+		return err
+	}
+	delta := time.Since(latStart).Round(time.Second)
+	delta = min(max(time.Second, delta*3/2), 5*time.Second)
+
+	app.conn.rate = delta
+	app.conn.ticker = time.NewTicker(delta)
+
+	go func() {
+		for {
+			select {
+			case <-app.conn.ticker.C:
+				app.outgoing <- PollEvent(app.last)
+			case <-app.conn.ctx.Done():
+				return
+			}
+		}
+	}()
+
+	app.outgoing <- FetchEvent(50)
+	app.outgoing <- StatEvent("")
+	app.incoming <- ev
 
 	return nil
 }
 
-type Poll int
+type HangupEvent struct{}
 
-func (p Poll) HandleOutgoing(app *App) error {
-	num, err := app.Poll(int(p))
+func (ev HangupEvent) HandleOutgoing(app *App) error {
+	if app.conn == nil {
+		app.incoming <- SystemMessageEvent("not connected to any server")
+		return nil
+	}
+
+	host := app.conn.host
+	port := app.conn.port
+
+	app.conn.stop()
+	app.conn.Write([]byte("QUIT\n"))
+	app.conn.Close()
+	app.conn.ticker.Stop()
+	app.conn.ticker = nil
+	app.conn = nil
+	app.incoming <- SystemMessageEvent(fmt.Sprintf("disconnected from %s:%s", host, port))
+
+	return nil
+}
+
+type FetchEvent int
+
+func (ev FetchEvent) HandleOutgoing(app *App) error {
+	_, err := app.Last(int(ev))
+	return err
+}
+
+type MessageEvent string
+
+func (ev MessageEvent) HandleIncoming(app *App) {
+	app.AppendMessage(string(ev))
+
+}
+func (ev MessageEvent) HandleOutgoing(app *App) error {
+	num, err := app.Send(string(ev))
+	if err != nil {
+		return err
+	}
+	app.incoming <- SetLastEvent(num)
+
+	return nil
+}
+
+type SystemMessageEvent string
+
+func (ev SystemMessageEvent) HandleIncoming(app *App) {
+	app.AppendSystemMessage("%s", string(ev))
+}
+
+type PollEvent int
+
+func (ev PollEvent) HandleOutgoing(app *App) error {
+	num, err := app.Poll(int(ev))
 	if err != nil {
 		return err
 	}
@@ -39,19 +142,19 @@ func (p Poll) HandleOutgoing(app *App) error {
 		return err
 	}
 	if num != 0 {
-		app.outgoing <- Stat("")
+		app.outgoing <- StatEvent("")
 	}
 	return nil
 }
 
-type ManualPoll int
+type ManualPollEvent int
 
-func (p ManualPoll) HandleOutgoing(app *App) error {
-	num, err := app.Poll(int(p))
+func (ev ManualPollEvent) HandleOutgoing(app *App) error {
+	num, err := app.Poll(int(ev))
 	if err != nil {
 		return err
 	}
-	app.incoming <- ManualPoll(num)
+	app.incoming <- ManualPollEvent(num)
 	if num == 0 {
 		return nil
 	}
@@ -61,35 +164,35 @@ func (p ManualPoll) HandleOutgoing(app *App) error {
 		return err
 	}
 	if num != 0 {
-		app.outgoing <- Stat("")
+		app.outgoing <- StatEvent("")
 	}
 	return nil
 }
 
-func (p ManualPoll) HandleIncoming(app *App) {
-	if int(p) == 0 {
+func (ev ManualPollEvent) HandleIncoming(app *App) {
+	if int(ev) == 0 {
 		app.AppendSystemMessage("poll: no new messages")
 	} else {
-		app.AppendSystemMessage("poll: retrieving %d messages", p)
+		app.AppendSystemMessage("poll: retrieving %d messages", ev)
 	}
 }
 
-type Last int
+type SetLastEvent int
 
-func (m Last) HandleIncoming(app *App) {
-	app.last = int(m)
+func (ev SetLastEvent) HandleIncoming(app *App) {
+	app.last = int(ev)
 }
 
-type Stat string
+type StatEvent string
 
-func (data Stat) HandleIncoming(app *App) {
-	app.stats = string(data)
+func (ev StatEvent) HandleIncoming(app *App) {
+	app.stats = string(ev)
 }
-func (_ Stat) HandleOutgoing(app *App) error {
+func (_ StatEvent) HandleOutgoing(app *App) error {
 	res, err := app.Stat()
 	if err != nil {
 		return err
 	}
-	app.incoming <- Stat(res)
+	app.incoming <- StatEvent(res)
 	return nil
 }
