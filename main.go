@@ -90,7 +90,7 @@ func (app *App) EnsureConfigDir() error {
 	app.cfgHome = path.Join(userCfg, "nanite")
 	stat, err := os.Stat(app.cfgHome)
 	if err != nil {
-		if err := os.Mkdir(app.cfgHome, 0o700); err != nil {
+		if err := os.MkdirAll(app.cfgHome, 0o700); err != nil {
 			return err
 		}
 	} else {
@@ -109,7 +109,7 @@ func NewApp() *App {
 	app.error = make(chan error)
 
 	if err := app.EnsureConfigDir(); err != nil {
-		app.error <- err
+		panic(err)
 	}
 
 	go func() {
@@ -180,6 +180,7 @@ func main() {
 	app.AppendSystemMessage("welcome to nanite! :3")
 
 	if err := app.Loop(); err != nil {
+		app.FinishUI()
 		panic(err)
 	}
 }
