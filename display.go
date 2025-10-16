@@ -108,6 +108,10 @@ func (app *App) HandleTerminalEvent(ev vaxis.Event) {
 			app.pager.ScrollUp()
 		case "Down":
 			app.pager.ScrollDown()
+		case "Page_Up":
+			app.pager.ScrollUpN(app.w.log.Height * 2 / 3)
+		case "Page_Down":
+			app.pager.ScrollDownN(app.w.log.Height * 2 / 3)
 		case "Enter":
 			app.submitTextInput()
 		case "Ctrl+p":

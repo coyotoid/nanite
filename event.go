@@ -27,7 +27,9 @@ func (ev DialEvent) HandleOutgoing(app *App) error {
 	var err error
 
 	if app.conn != nil {
-		app.incoming <- SystemMessageEvent(fmt.Sprintf("already connected to %s:%s", app.conn.host, app.conn.port))
+		app.incoming <- SystemMessageEvent(
+			fmt.Sprintf("already connected to %s:%s", app.conn.host, app.conn.port),
+		)
 		return nil
 	}
 	conn, err := net.Dial("tcp", net.JoinHostPort(ev.Host, ev.Port))
@@ -51,8 +53,8 @@ func (ev DialEvent) HandleOutgoing(app *App) error {
 	if err != nil {
 		return err
 	}
-	delta := time.Since(latStart).Round(time.Second)
-	delta = min(max(time.Second, delta*3/2), 5*time.Second)
+	delta := time.Since(latStart)
+	delta = min(max(time.Second, delta*3/2), 5*time.Second).Round(time.Second)
 
 	app.conn.rate = delta
 	app.conn.ticker = time.NewTicker(delta)

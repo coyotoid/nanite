@@ -96,23 +96,20 @@ func (app *App) Last(n int) (num int, err error) {
 		return 0, err
 	}
 
-	var nsrv int
 	if !app.conn.Scanner.Scan() {
 		return 0, app.conn.Scanner.Err()
 	}
-	nsrvRaw := app.conn.Scanner.Text()
-	nsrv, err = strconv.Atoi(nsrvRaw)
+	numRaw := app.conn.Scanner.Text()
+	num, err = strconv.Atoi(numRaw)
 	if err != nil {
 		return 0, err
 	}
 
-	if nsrv != 0 {
-		for range nsrv {
-			if !app.conn.Scanner.Scan() {
-				return 0, app.conn.Scanner.Err()
-			}
-			app.incoming <- MessageEvent(app.conn.Scanner.Text())
+	for range num {
+		if !app.conn.Scanner.Scan() {
+			return 0, app.conn.Scanner.Err()
 		}
+		app.incoming <- MessageEvent(app.conn.Scanner.Text())
 	}
 
 	var last int
@@ -126,5 +123,5 @@ func (app *App) Last(n int) (num int, err error) {
 	}
 	app.incoming <- SetLastEvent(last)
 
-	return nsrv, nil
+	return num, nil
 }

@@ -26,6 +26,10 @@ func initCommandMap() {
 			}
 			app.AppendSystemMessage("commands: %s", s.String())
 		},
+		"send": func(app *App, rest string) {
+			app.AppendMessage(rest)
+			app.outgoing <- MessageEvent(rest)
+		},
 		"dial": func(app *App, rest string) {
 			args := strings.Fields(rest)
 			if len(args) < 1 || len(args) > 2 {

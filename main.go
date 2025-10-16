@@ -31,12 +31,13 @@ type App struct {
 	outgoing chan OutgoingEvent
 	error    chan error
 
-	vx *vaxis.Vaxis
-	w  struct {
+	vx    *vaxis.Vaxis
+	pager *pager.Model
+	input *textinput.Model
+	w     struct {
 		log, title, input vaxis.Window
 	}
-	pager   *pager.Model
-	input   *textinput.Model
+
 	cfgHome string
 }
 
@@ -60,7 +61,7 @@ func (app *App) AppendMessage(data string) {
 		vaxis.Segment{Text: data, Style: style},
 		vaxis.Segment{Text: "\n"},
 	)
-	app.last += 1
+
 	app.pager.Offset = math.MaxInt
 }
 
@@ -76,7 +77,7 @@ func (app *App) AppendSystemMessage(format string, args ...any) {
 
 func (app *App) SetNick(nick string) {
 	nick = strings.TrimSpace(nick)
-	app.input.SetPrompt(fmt.Sprintf("%s: ", nick))
+	app.input.SetPrompt(fmt.Sprintf("[%s] ", nick))
 	app.input.Prompt.Attribute = vaxis.AttrBold
 	app.nick = nick
 }
