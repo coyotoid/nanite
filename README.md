@@ -2,6 +2,9 @@
 
 `nanite` is a terminal [Nanochat] client.
 
+> Note: I've moved this to my personal Forgejo instance.  The upstream URL
+> is now https://git.rhzm.org/lobo/nanite :)
+
 ![](./assets/screenshot.png)
 
 ## build
