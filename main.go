@@ -31,6 +31,8 @@ type App struct {
 	outgoing chan OutgoingEvent
 	error    chan error
 
+	scripts []string
+
 	vx    *vaxis.Vaxis
 	pager *pager.Model
 	input *textinput.Model
@@ -61,7 +63,6 @@ func (app *App) AppendMessage(data string) {
 		vaxis.Segment{Text: data, Style: style},
 		vaxis.Segment{Text: "\n"},
 	)
-
 	app.pager.Offset = math.MaxInt
 }
 
@@ -109,6 +110,10 @@ func NewApp() *App {
 	app.error = make(chan error)
 
 	if err := app.EnsureConfigDir(); err != nil {
+		panic(err)
+	}
+
+	if err := app.RefreshScripts(); err != nil {
 		panic(err)
 	}
 

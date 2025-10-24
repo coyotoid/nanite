@@ -11,6 +11,7 @@ import (
 type IncomingEvent interface {
 	HandleIncoming(*App)
 }
+
 type OutgoingEvent interface {
 	HandleOutgoing(*App) error
 }
@@ -77,9 +78,13 @@ func (ev DialEvent) HandleOutgoing(app *App) error {
 	return nil
 }
 
-type HangupEvent struct{}
+type HangupEvent struct{ host, port string }
 
-func (ev HangupEvent) HandleOutgoing(app *App) error {
+func (ev HangupEvent) HandleIncoming(app *App) {
+	app.AppendSystemMessage("disconnected from %s:%s", ev.host, ev.port)
+}
+
+func (_ HangupEvent) HandleOutgoing(app *App) error {
 	if app.conn == nil {
 		app.incoming <- SystemMessageEvent("not connected to any server")
 		return nil
@@ -94,7 +99,7 @@ func (ev HangupEvent) HandleOutgoing(app *App) error {
 	app.conn.ticker.Stop()
 	app.conn.ticker = nil
 	app.conn = nil
-	app.incoming <- SystemMessageEvent(fmt.Sprintf("disconnected from %s:%s", host, port))
+	app.incoming <- HangupEvent{host, port}
 
 	return nil
 }

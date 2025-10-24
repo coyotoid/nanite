@@ -26,6 +26,20 @@ func initCommandMap() {
 			}
 			app.AppendSystemMessage("commands: %s", s.String())
 		},
+		"script": func(app *App, rest string) {
+			if rest == "" {
+				var s strings.Builder
+				for _, script := range app.scripts {
+					s.WriteString(script)
+					s.WriteRune(' ')
+				}
+				app.AppendSystemMessage("scripts: %s", s.String())
+			} else {
+				if err := app.LoadScript(rest); err != nil {
+					app.AppendSystemMessage("error loading script `%s`: %s", rest, err)
+				}
+			}
+		},
 		"send": func(app *App, rest string) {
 			app.AppendMessage(rest)
 			app.outgoing <- MessageEvent(rest)
@@ -51,7 +65,7 @@ func initCommandMap() {
 			} else {
 				app.SetNick(rest)
 				app.AppendSystemMessage("nick: your nickname is now %s", app.nick)
-				if err := os.WriteFile(path.Join(app.cfgHome, "nick"), []byte(rest), 0o700); err != nil {
+				if err := os.WriteFile(path.Join(app.cfgHome, "nick"), []byte(rest), 0o600); err != nil {
 					app.AppendSystemMessage("nick: failed to persist nickname: %s", err)
 				}
 			}
@@ -90,8 +104,9 @@ func initCommandMap() {
 		"quit": func(app *App, rest string) {
 			app.stop()
 		},
-		"q": func(app *App, rest string) {
-			app.stop()
-		},
 	}
+
+	// aliases
+	CommandMap["q"] = CommandMap["quit"]
+	CommandMap["."] = CommandMap["script"]
 }
