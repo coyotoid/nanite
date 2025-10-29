@@ -1,4 +1,4 @@
-module codeberg.org/lobo/nanite
+module git.rhzm.org/lobo/nanite
 
 go 1.24.4
 
