@@ -87,13 +87,14 @@ func (app *App) submitTextInput() {
 		name, rest, _ := strings.Cut(app.input.String()[1:], " ")
 		if cmd, ok := CommandMap[name]; ok {
 			cmd(app, rest)
+		} else if alias, ok := AliasMap[name]; ok {
+			cmd := CommandMap[alias]
+			cmd(app, rest)
 		} else {
 			app.AppendSystemMessage("unknown command \"%s\"", name)
 		}
 	} else {
-		message := fmt.Sprintf("%s: %s", app.nick, app.input.String())
-		app.AppendMessage(message)
-		app.outgoing <- MessageEvent(message)
+		app.outgoing <- MessageEvent(fmt.Sprintf("%s: %s", app.nick, app.input.String()))
 		app.outgoing <- StatEvent("")
 	}
 

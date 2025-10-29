@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -12,15 +14,13 @@ import (
 type Command func(*App, string)
 
 var CommandMap map[string]Command
+var AliasMap map[string]string
 
 func initCommandMap() {
 	CommandMap = map[string]Command{
 		"help": func(app *App, rest string) {
 			var s strings.Builder
-			for name, _ := range CommandMap {
-				if name == "q" {
-					continue
-				}
+			for _, name := range slices.Sorted(maps.Keys(CommandMap)) {
 				s.WriteString(name)
 				s.WriteRune(' ')
 			}
@@ -28,26 +28,28 @@ func initCommandMap() {
 		},
 		"script": func(app *App, rest string) {
 			if rest == "" {
+				if err := app.RefreshScripts(); err != nil {
+					app.AppendSystemMessage("failed to refresh scripts")
+				}
 				var s strings.Builder
-				for _, script := range app.scripts {
+				for _, script := range slices.Sorted(maps.Keys(app.scripts)) {
 					s.WriteString(script)
 					s.WriteRune(' ')
 				}
 				app.AppendSystemMessage("scripts: %s", s.String())
 			} else {
 				if err := app.LoadScript(rest); err != nil {
-					app.AppendSystemMessage("error loading script `%s`: %s", rest, err)
+					app.AppendSystemMessage("error loading script \"%s\": %s", rest, err)
 				}
 			}
 		},
 		"send": func(app *App, rest string) {
-			app.AppendMessage(rest)
 			app.outgoing <- MessageEvent(rest)
 		},
 		"dial": func(app *App, rest string) {
 			args := strings.Fields(rest)
 			if len(args) < 1 || len(args) > 2 {
-				app.AppendSystemMessage("usage: /connect host [port]")
+				app.AppendSystemMessage("usage: /dial host [port]")
 			}
 			host := args[0]
 			port := "44322"
@@ -61,12 +63,12 @@ func initCommandMap() {
 		},
 		"nick": func(app *App, rest string) {
 			if rest == "" {
-				app.AppendSystemMessage("nick: your nickname is %s", app.nick)
+				app.AppendSystemMessage("your nickname is %s", app.nick)
 			} else {
 				app.SetNick(rest)
-				app.AppendSystemMessage("nick: your nickname is now %s", app.nick)
+				app.AppendSystemMessage("your nickname is now %s", app.nick)
 				if err := os.WriteFile(path.Join(app.cfgHome, "nick"), []byte(rest), 0o600); err != nil {
-					app.AppendSystemMessage("nick: failed to persist nickname: %s", err)
+					app.AppendSystemMessage("failed to persist nickname: %s", err)
 				}
 			}
 		},
@@ -74,27 +76,29 @@ func initCommandMap() {
 			if rest == "" {
 				app.outgoing <- ManualPollEvent(app.last)
 			} else {
+				if app.conn == nil {
+					app.AppendSystemMessage("not connected to any server")
+					return
+				}
 				num, err := strconv.Atoi(rest)
 				if err != nil {
-					app.AppendSystemMessage("poll: invalid number %s", rest)
+					app.AppendSystemMessage("invalid number \"%s\"", rest)
 				} else {
 					if num == 0 {
 						app.conn.ticker.Stop()
 						app.conn.rate = 0
-						app.AppendSystemMessage("poll: disabled automatic polling")
+						app.AppendSystemMessage("disabled automatic polling")
 					} else {
 						app.conn.rate = time.Second * time.Duration(num)
 						app.conn.ticker.Stop()
 						app.conn.ticker = time.NewTicker(app.conn.rate)
-						app.AppendSystemMessage("poll: polling every %s", app.conn.rate.String())
+						app.AppendSystemMessage("polling rate set to %s", app.conn.rate.String())
 					}
 				}
 			}
 		},
 		"me": func(app *App, rest string) {
-			msg := fmt.Sprintf("%s %s", app.nick, rest)
-			app.AppendMessage(msg)
-			app.outgoing <- MessageEvent(msg)
+			app.outgoing <- MessageEvent(fmt.Sprintf("%s %s", app.nick, rest))
 		},
 		"clear": func(app *App, rest string) {
 			clear(app.pager.Segments)
@@ -106,7 +110,8 @@ func initCommandMap() {
 		},
 	}
 
-	// aliases
-	CommandMap["q"] = CommandMap["quit"]
-	CommandMap["."] = CommandMap["script"]
+	AliasMap = map[string]string {
+		"q": "quit",
+		".": "script",
+	}
 }

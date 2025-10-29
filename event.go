@@ -118,6 +118,7 @@ func (ev MessageEvent) HandleIncoming(app *App) {
 
 }
 func (ev MessageEvent) HandleOutgoing(app *App) error {
+	app.incoming <- ev
 	num, err := app.Send(string(ev))
 	if err != nil {
 		return err
@@ -178,9 +179,9 @@ func (ev ManualPollEvent) HandleOutgoing(app *App) error {
 
 func (ev ManualPollEvent) HandleIncoming(app *App) {
 	if int(ev) == 0 {
-		app.AppendSystemMessage("poll: no new messages")
+		app.AppendSystemMessage("no new messages")
 	} else {
-		app.AppendSystemMessage("poll: retrieving %d messages", ev)
+		app.AppendSystemMessage("retrieving %d messages", ev)
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -10,39 +11,42 @@ import (
 )
 
 func (app *App) RefreshScripts() error {
+	app.scripts = make(map[string]string)
+
 	scriptDir := path.Join(app.cfgHome, "scripts")
 	if _, err := os.Stat(scriptDir); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 
 	return filepath.Walk(scriptDir, func(p string, i os.FileInfo, err error) error {
-		if err != nil {
+		switch {
+		case err != nil:
 			return err
-		}
-		if i.IsDir() {
+		case i.IsDir():
 			return nil
+		default:
+			if data, err := os.ReadFile(p); err != nil {
+				return err
+			} else {
+				app.scripts[path.Base(p)] = string(data)
+				return nil
+			}
 		}
-		app.scripts = append(app.scripts, path.Base(p))
-		return nil
 	})
 }
 
 func (app *App) LoadScript(name string) error {
-	scriptPath := path.Join(app.cfgHome, "scripts", name)
-	data, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return err
-	}
-
-	for line := range strings.Lines(string(data)) {
-		app.AppendSystemMessage("/%s", line)
-		name, rest, _ := strings.Cut(line, " ")
-		if cmd, ok := CommandMap[name]; ok {
-			cmd(app, rest)
-		} else {
-			app.AppendSystemMessage("unknown command \"%s\"", name)
+	if script, ok := app.scripts[name]; ok {
+		for line := range strings.Lines(script) {
+			cmdName, rest, _ := strings.Cut(strings.TrimSpace(line), " ")
+			if cmd, ok := CommandMap[cmdName]; ok {
+				cmd(app, rest)
+			} else {
+				return fmt.Errorf("unknown command \"%s\"", cmdName)
+			}
 		}
+	} else {
+		return fmt.Errorf("not found")
 	}
-
 	return nil
 }

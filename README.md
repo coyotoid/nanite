@@ -1,45 +1,30 @@
 # nanite
 
-`nanite` is a terminal [Nanochat] client.
+`nanite` is a terminal client for the [Nanochat] protocol.
 
-> Note: I've moved this to my personal Forgejo instance.  The upstream URL
-> is now https://git.rhzm.org/lobo/nanite :)
+Requires Go 1.24.4 or higher.  Build using `make build`.
 
-![](./assets/screenshot.png)
+> The upstream URL for this repository is <https://git.rhzm.org/lobo/nanite>.
+> The repositories hosted on GitHub and Codeberg are mirrors.
 
-## build
-
-```
-$ go build .
-```
-
-## usage
-
-```
-$ ./nanite
-usage: ./nanite host [port]
-$ ./nanite very.real-server.com
-```
-
-keybindings:
+# keybindings
 
 - `Ctrl+C`: quit
 - `Ctrl+L`: refresh screen
 - `Ctrl+P`: poll
+- Emacs-like bindings for text editing
 
-commands:
+# commands
 
-- `/dial hostname`: connect to server
-- `/hangup`: disconnect
-- `/q`, `/quit`: quit
-- `/nick [nickname]`: change nick, if no arguments, show current nick
-- `/me`: IRC `/me` alike
-- `/poll [seconds]`: change polling interval, if no arguments, poll manually
-
-## won't support (yet)
-
-- sixel (tried, it seems to be complicated to get it to work with Vaxis' pager
-  widget)
+- `/clear`: clear message log
+- `/dial host [port]`: connect to server
+- `/hangup`: disconnect from server
+- `/help`: see command list
+- `/me ...`: send IRC-style `/me` message
+- `/nick [nickname]`: change nickname or see current nickname if no arguments given
+- `/poll [time]`: set polling rate to time or poll manually if no arguments given
+- `/quit`: self-explanatory (aliased to `/q`)
+- `/script [name]`: run script or see script list if no arguments given (aliased to `/.`)
+- `/send ...`: send raw message
 
 [Nanochat]: https://git.phial.org/d6/nanochat
-[Vaxis]: https://git.sr.ht/~rockorager/vaxis

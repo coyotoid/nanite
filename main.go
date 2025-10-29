@@ -31,7 +31,7 @@ type App struct {
 	outgoing chan OutgoingEvent
 	error    chan error
 
-	scripts []string
+	scripts map[string]string
 
 	vx    *vaxis.Vaxis
 	pager *pager.Model
@@ -121,9 +121,14 @@ func NewApp() *App {
 		for {
 			select {
 			case ev := <-app.outgoing:
-				if err := ev.HandleOutgoing(app); err != nil {
-					app.error <- err
-					return
+				_, dial := ev.(DialEvent)
+				if dial || app.conn != nil {
+					if err := ev.HandleOutgoing(app); err != nil {
+						app.error <- err
+						return
+					}
+				} else {
+					app.incoming <- SystemMessageEvent("not connected to any server")
 				}
 			case <-app.ctx.Done():
 				return
@@ -155,7 +160,9 @@ func (app *App) Loop() error {
 func (app *App) Finish() {
 	app.stop()
 	app.FinishUI()
-	HangupEvent{}.HandleOutgoing(app)
+	if app.conn != nil {
+		HangupEvent{}.HandleOutgoing(app)
+	}
 }
 
 func init() {
